@@ -1,0 +1,486 @@
+Section 3 transcript: claude.ai chat, Claude Opus 5.5, 2026-11-20
+Copied from the chat by hand, in order, unedited. Part 1 is the setup prompt I sent first. Part 2 is the conversation that followed.
+
+======================================================================
+PART 1: SETUP PROMPT (sent first)
+======================================================================
+
+I'm working on Section 3 (robustness) of my ECON 5200 midterm replication of Card (1995), "Using Geographic Variation in College Proximity to Estimate the Return to Schooling" (IV: nearc4 instruments educ, outcome lwage). The repo is the current folder and it is a git repo pushed to github.com/lukys8120/econ5200-midterm-replication.
+
+## Rules (important)
+- Only edit notebooks/02_robustness.ipynb (and later files I ask for). NEVER edit notebooks/01_positioning_and_replication.ipynb. Sections 1 and 2 are no-AI by course rule. Don't read 01 to rewrite or critique it. Reading it only to copy the sample construction and control definitions into 02 is fine.
+- AI use in this notebook is allowed but must be documented under P.R.I.M.E. in ai-appendix.md, so explain what you do and why in chat. I must be able to explain every line, so keep code simple and readable.
+- Code comments: short, only where non-obvious. Explanations go in chat, not in the file.
+- Do NOT write the "What it implies about the original claim" paragraphs for me. Show me the results, help me understand them, and I write those. You may draft "What I did" and suggest what to look at for "What I found".
+- Credit code taken from the course starter (reference/replication_starter_card1995.ipynb) in a short comment.
+- Don't commit or push. I do that myself after each exercise. Never add a Claude co-author trailer anywhere.
+- Every number, table and figure must be produced by the notebook and saved to output/ (CSV for tables, PNG for figures), because the report can only use numbers the code produces.
+
+## Setup facts
+- Environment: .venv in the repo (python 3.14), packages pinned in requirements.txt (pandas, numpy, scipy, statsmodels, linearmodels, matplotlib, nbclient...). If you need a new package, ask first and add it pinned to requirements.txt.
+- python reproduce.py runs notebooks/*.ipynb in name order in a fresh kernel, so 02 must run top to bottom on its own. Running notebooks headlessly needs local port binding, which the sandbox blocks, so ask me before running outside the sandbox.
+- Data: download_data.py has MY_PAPER = "card", and fetch(MY_PAPER) returns the path to data/card.dta. The template's setup and data cells in 02 already import it.
+- Baseline from my Section 2 (must reproduce exactly in 02): N = 3,010 after dropping missing on lwage, educ, exper, age, nearc4, black, south, smsa, smsa66, reg661–reg668. Add expersq = exper². Controls = exper, expersq, black, south, smsa, smsa66, reg661–reg668. 2SLS via linearmodels IV2SLS with cov_type="unadjusted", debiased=True gives educ = 0.1315 (SE 0.0550). OLS = 0.0747. First-stage coefficient on nearc4 = 0.320, F ≈ 13.3.
+- The starter's functions (first_stage, anderson_rubin, MY_SPEC check) expect CONTROLS as a LIST of column names and a dataframe called `card`. Adapt them to a list version of my controls and data=df.
+
+## What to build: at least four exercises, each with markdown "What I did" / code / "What I found" / "What it implies" (the template's cells are already there)
+1. Instrument strength across samples: first-stage coefficient, classical and robust F, and n, for full sample and subsamples (South/non-South, Black/non-Black, SMSA/non-SMSA). Table to output/.
+2. Anderson–Rubin 95% set versus the conventional Wald interval for the baseline, and ideally for the subsamples too. Watch for sets that hit the grid edge (unbounded).
+3. My own specification (from my ambiguities list): (a) add family background (fatheduc, motheduc, momdad14) and report how many rows are lost and whether the baseline on that smaller sample alone moves; (b) 1966-only vs 1976-only region/urban controls; (c) optionally nearc2 as the instrument, or both with an over-identification test.
+4. Exclusion-restriction check: a placebo (does nearc4 predict a pre-schooling or ability measure like IQ or KWW once controls are included?) and/or 2SLS in subsamples where exclusion is more vs less plausible.
+Optional: HC1 robust SEs versus conventional. A coefficient plot of 2SLS estimates with 95% CIs across all specs (output/spec_plot.png).
+
+## How to work with me
+Go one exercise at a time. Before coding, tell me the plan in 3–4 lines. After running it, show the key numbers and explain in plain language what they mean for Card's 0.132 claim, then stop and let me write the implies paragraph and commit. At the end, help me check that python reproduce.py runs clean, and help fill in README.md and the Section 3 entries of ai-appendix.md (P.R.I.M.E. format in that file). I will export this conversation with /export for the full transcript.
+
+======================================================================
+PART 2: THE CONVERSATION
+======================================================================
+
+Which way do you want to go?
+
+i want to work in this chat seciton by section
+
+Works. One constraint first: my sandbox has pandas, numpy and scipy, but not linearmodels or statsmodels, and I can’t install packages (no network). So I’ll write the notebook code with linearmodels as your setup expects, check every number here with an equivalent plain-numpy 2SLS, and you run the notebook locally to create the final output/ files.
+
+To start, please upload 02_robustness.ipynb, replication_starter_card1995.ipynb and card.dta.
+
+Plan for Exercise 1 (instrument strength):
+
+Rebuild the baseline sample (N = 3,010, controls as a list) and confirm 2SLS = 0.1315 (SE 0.0550).
+Write one small function that runs the first stage of educ on nearc4 plus controls for any subsample. It returns the nearc4 coefficient, classical F, HC1-robust F and n.
+Run it on the full sample and six subsamples (South/non-South, Black/non-Black, SMSA/non-SMSA). When I split on a variable, I drop that variable from the controls, since it’s constant within the subsample.
+Save the table to output/first_stage_by_sample.csv.
+
+Upload the files and say go, or tell me what to change in the plan.
+
+thats fine we will build code together and i can give you back the terminal answers
+
+Here’s Exercise 1 as three cells. Paste them under the template’s setup and data cells, run them, and paste the printed output back.
+
+Cell A: sample and baseline check
+
+python
+from pathlib import Path
+import pandas as pd
+import statsmodels.api as sm
+from linearmodels.iv import IV2SLS
+
+OUT = Path("../output")  # adjust if your template sets the output path differently
+OUT.mkdir(exist_ok=True)
+
+REGS = [f"reg66{i}" for i in range(1, 9)]
+NEEDED = ["lwage", "educ", "exper", "age", "nearc4", "black", "south", "smsa", "smsa66"] + REGS
+
+df = pd.read_stata(fetch(MY_PAPER)).dropna(subset=NEEDED).copy()
+df["expersq"] = df["exper"] ** 2
+CONTROLS = ["exper", "expersq", "black", "south", "smsa", "smsa66"] + REGS
+
+def iv(data, controls, instr=["nearc4"]):
+    exog = sm.add_constant(data[controls])
+    return IV2SLS(data["lwage"], exog, data["educ"], data[instr]).fit(cov_type="unadjusted", debiased=True)
+
+base = iv(df, CONTROLS)
+print(len(df), round(base.params["educ"], 4), round(base.std_errors["educ"], 4))
+
+Cell B: first-stage function
+
+python
+def first_stage(data, controls, instr="nearc4"):
+    controls = [c for c in controls if data[c].nunique() > 1]  # drop controls constant in a subsample
+    X = sm.add_constant(data[[instr] + controls])
+    classic = sm.OLS(data["educ"], X).fit()
+    robust = sm.OLS(data["educ"], X).fit(cov_type="HC1")
+    # one instrument, so F = t squared
+    return {"coef": classic.params[instr], "se": classic.bse[instr],
+            "F": classic.tvalues[instr] ** 2, "F_robust": robust.tvalues[instr] ** 2,
+            "n": int(classic.nobs)}
+
+Cell C: run across samples and save
+
+python
+SAMPLES = {
+    "Full": df,
+    "South": df[df.south == 1], "Non-South": df[df.south == 0],
+    "Black": df[df.black == 1], "Non-Black": df[df.black == 0],
+    "SMSA": df[df.smsa == 1], "Non-SMSA": df[df.smsa == 0],
+}
+
+fs_table = pd.DataFrame({name: first_stage(d, CONTROLS) for name, d in SAMPLES.items()}).T
+fs_table.to_csv(OUT / "first_stage_by_sample.csv")
+print(fs_table.round({"coef": 3, "se": 3, "F": 2, "F_robust": 2}))
+
+Why it’s built this way (for P.R.I.M.E.):
+
+With one instrument, the first-stage F equals the t-statistic on nearc4 squared. The robust F uses the HC1 t instead, so no extra package is needed.
+The nunique() > 1 line automatically drops the split variable inside its own subsample, plus any region dummy that ends up all zero. Otherwise the regression would be collinear.
+iv() is reused in Exercises 2 to 4.
+I wrote this from scratch, without the starter’s first_stage. If you’d rather adapt the starter’s version, paste it here and add the credit comment.
+
+Draft “What I did”: I estimated the first stage of education on nearc4 with the baseline controls for the full sample and six subsamples split by South, race and SMSA residence. I report the nearc4 coefficient, classical and HC1-robust F-statistics, and sample size, dropping any control that is constant within a subsample.
+
+What to check in the output: Cell A should print 3010 0.1315 0.055, and the Full row should show coef ≈ 0.320 and F ≈ 13.3.
+
+Quick reference for what we're working with in 02_robustness.ipynb (already loaded and run):
+
+Data: df = card.dta, 3,010 men (NLSYM, wages in 1976)
+- lwage: log hourly wage (outcome)
+- educ: years of schooling (endogenous treatment)
+- nearc4: grew up near a 4-year college in 1966 (instrument). nearc2 = 2-year college (alternative instrument)
+- exper, expersq: potential experience and its square
+- black, south, smsa: race, South and urban in 1976. smsa66, reg661–reg668: urban and region in 1966 (reg669 = base)
+- age, agesq: used in Panel B as instruments for experience
+- Family background: fatheduc, motheduc (many missing), momdad14, sinmom14, step14, libcrd14
+- Test scores: IQ (949 missing), KWW (47 missing). Possible placebo outcomes
+- Ignore u_lwage, lwage_hat, u_educ (not Card's variables)
+
+Defined in the notebook:
+- EXOG: formula string of black + south + smsa + smsa66 + reg661…reg668
+- CONTROLS: formula string "exper + expersq + " + EXOG
+- ols_fit: OLS of lwage on educ + CONTROLS → 0.0747
+- fs_fit: first stage, educ on nearc4 + CONTROLS → 0.320, F ≈ 13.3
+- rf_fit: reduced form, lwage on nearc4 + CONTROLS → 0.042
+- iv_fit: 2SLS (IV2SLS, unadjusted SEs) → 0.1315 (SE 0.0550). THE BASELINE
+- fsB_fit, rfB_fit, ivB_fit: Panel B versions (experience instrumented by age, agesq) → 2SLS 0.122
+
+Note: CONTROLS is a string, but the starter functions need a list of column names and data=df.
+
+Adapting the code to reuse the existing df and string CONTROLS.
+
+Since df, CONTROLS and iv_fit already exist, replace Cell A with this. Cells B and C stay the same, except Cell C should use CONTROLS_LIST.
+
+Cell A (revised)
+
+python
+from pathlib import Path
+import pandas as pd
+import statsmodels.api as sm
+from linearmodels.iv import IV2SLS
+
+OUT = Path("../output")  # adjust if your template sets this differently
+OUT.mkdir(exist_ok=True)
+
+CONTROLS_LIST = [c.strip() for c in CONTROLS.split("+")]  # list version for array-based functions
+
+def iv(data, controls, instr=["nearc4"]):
+    exog = sm.add_constant(data[controls])
+    return IV2SLS(data["lwage"], exog, data["educ"], data[instr]).fit(cov_type="unadjusted", debiased=True)
+
+check = iv(df, CONTROLS_LIST)
+print(len(df), round(check.params["educ"], 4), round(check.std_errors["educ"], 4), round(iv_fit.params["educ"], 4))
+
+Cell C, one-line change
+
+python
+fs_table = pd.DataFrame({name: first_stage(d, CONTROLS_LIST) for name, d in SAMPLES.items()}).T
+
+Why:
+
+I keep your CONTROLS string untouched so the Section 2 style formulas still work. CONTROLS_LIST is derived from it, so the two can’t drift apart.
+The print compares my helper with your iv_fit. Both should show 0.1315, which proves the helper reproduces your baseline before I use it on subsamples.
+
+Paste the output of A and C.
+
+Prompt: Exercise 1, instrument strength
+
+Exercise 1: instrument strength across samples. Same working style as before (explain, show the code, wait for my OK, one cell at a time).
+
+Purpose: test Card's first link, relevance. Does nearc4 actually move schooling strongly, everywhere, or only in part of the sample? My baseline first stage is 0.320 with F ≈ 13.3, barely above the rule of thumb of 10.
+
+What to build, in the Exercise 1 code cell (and more cells below it if needed):
+- CTRL_LIST: a Python list version of CONTROLS: ["exper","expersq","black","south","smsa","smsa66"] + reg661..reg668. Keep the CONTROLS/EXOG strings as they are. Later exercises reuse CTRL_LIST.
+- first_stage(controls, instrument="nearc4", data=df): adapted from the starter (credit it). Returns coef, SE, classical F, robust HC1 F, n. Inside a subsample, drop any control that is constant there (e.g. south inside the South-only sample) and report which ones were dropped.
+- Also the 2SLS estimate (with SE) in each sample, using the same controls, cov_type="unadjusted", debiased=True like the baseline, so I can see whether the return moves where the instrument is weak.
+- Samples: full; south==1 / south==0; black==1 / black==0; smsa==1 / smsa==0.
+- Check: the full-sample row must reproduce 0.320 / F ≈ 13.3 / 2SLS 0.1315.
+- Save the table to output/ex1_first_stage.csv. Columns: sample, n, fs_coef, fs_se, F, F_robust, iv_coef, iv_se.
+
+One gap first: I can’t see the starter notebook, so I can’t adapt its first_stage or credit it accurately. Please paste the starter’s first_stage function (and anderson_rubin too, since Exercise 2 needs it).
+
+Until then, here’s the first cell. It doesn’t depend on the starter.
+
+Cell 1: CTRL_LIST and output folder
+
+python
+from pathlib import Path
+import statsmodels.api as sm
+from linearmodels.iv import IV2SLS
+
+OUT = Path("../output")  # adjust if your template sets this differently
+OUT.mkdir(exist_ok=True)
+
+CTRL_LIST = ["exper", "expersq", "black", "south", "smsa", "smsa66"] + [f"reg66{i}" for i in range(1, 9)]
+assert CTRL_LIST == [c.strip() for c in CONTROLS.split("+")]  # must match the CONTROLS string
+
+What it does:
+
+It writes out CTRL_LIST explicitly so you can read it at a glance.
+The assert proves it’s identical to your CONTROLS string, same variables in the same order. If the cell runs silently, they match. If it raises AssertionError, paste me your CONTROLS string.
+The imports may duplicate your setup cell. That’s harmless, but you can delete any that are already there.
+
+Run it, tell me if it passes, and paste the starter’s first_stage. Next cell is first_stage with constant-control dropping, then 2SLS per sample, then the table.
+
+Here is the code itself that you need, also there is not need to include imports as they will all already be present from the set up cell:
+
+# GIVEN — Section 3: the first stage for any controls, instrument and sample
+def first_stage(controls, instrument="nearc4", data=None):
+    data = card if data is None else data
+    X = sm.add_constant(data[[instrument] + controls])
+    classical = sm.OLS(data["educ"], X).fit()
+    robust = sm.OLS(data["educ"], X).fit(cov_type="HC1")
+    return {"coef": classical.params[instrument], "F": classical.tvalues[instrument] ** 2,
+            "F_robust": robust.tvalues[instrument] ** 2, "n": int(classical.nobs)}
+
+if CONTROLS is None:
+    print("Fill Section 2 first: CONTROLS is not set yet.")
+else:
+    fs = first_stage(CONTROLS)
+    print(f"First stage on nearc4: {fs['coef']:+.3f} years of schooling, "
+          f"F = {fs['F']:.1f} (robust {fs['F_robust']:.1f}), n = {fs['n']:,}")
+
+# GIVEN — Section 3: Anderson–Rubin 95% set over a grid of candidate returns
+def anderson_rubin(controls, instrument="nearc4", grid=np.linspace(-0.2, 0.6, 801), data=None):
+    data = card if data is None else data
+    X = sm.add_constant(data[[instrument] + controls])
+    keep = [b0 for b0 in grid
+            if sm.OLS(data["lwage"] - b0 * data["educ"], X).fit(cov_type="HC1").pvalues[instrument] > 0.05]
+    if not keep:
+        return None
+    edge = keep[0] == grid[0] or keep[-1] == grid[-1]
+    return min(keep), max(keep), edge
+
+if CONTROLS is None:
+    print("Fill Section 2 first: CONTROLS is not set yet.")
+else:
+    ar = anderson_rubin(CONTROLS)
+    if ar is None:
+        print("No value on the grid survives: widen the grid.")
+    else:
+        lo, hi, edge = ar
+        wald = iv_fit.conf_int().loc["educ"]
+        print(f"Anderson-Rubin 95% set: [{lo:.3f}, {hi:.3f}]" + ("  (touches the grid edge: unbounded there)" if edge else ""))
+        print(f"Your Section 2 Wald interval: [{wald.iloc[0]:.3f}, {wald.iloc[1]:.3f}]")
+
+Its markdown notes: "The first-stage F with one instrument is the instrument's t statistic squared. The rule of thumb is F above 10; a valid conventional 5% t test needs about 104.7 (Lee, McCrary, Moreira and Porter 2022). The heteroskedasticity-robust F is printed beside the classical one." and for AR: "Anderson–Rubin never divides by the first stage: for each candidate return b0 it asks whether lwage − b0·educ is still related to the instrument, and keeps every b0 it cannot reject. If the set runs into the edge of the grid, it is unbounded there, and the grid is not the answer."
+
+Got it, no imports. Cell 1 is now just this:
+
+python
+OUT = Path("../output")  # adjust if your template sets this differently
+OUT.mkdir(exist_ok=True)
+
+CTRL_LIST = ["exper", "expersq", "black", "south", "smsa", "smsa66"] + [f"reg66{i}" for i in range(1, 9)]
+assert CTRL_LIST == [c.strip() for c in CONTROLS.split("+")]  # must match the CONTROLS string
+
+Cell 2: adapted first_stage
+
+python
+# Adapted from the course starter (reference/replication_starter_card1995.ipynb):
+# added SE, default data=df, and dropping of controls that are constant in a subsample
+def first_stage(controls, instrument="nearc4", data=df):
+    dropped = [c for c in controls if data[c].nunique() == 1]
+    controls = [c for c in controls if c not in dropped]
+    X = sm.add_constant(data[[instrument] + controls])
+    classical = sm.OLS(data["educ"], X).fit()
+    robust = sm.OLS(data["educ"], X).fit(cov_type="HC1")
+    return {"coef": classical.params[instrument], "se": classical.bse[instrument],
+            "F": classical.tvalues[instrument] ** 2, "F_robust": robust.tvalues[instrument] ** 2,
+            "n": int(classical.nobs), "dropped": dropped}
+
+fs = first_stage(CTRL_LIST)
+print(f"First stage on nearc4: {fs['coef']:+.3f} (SE {fs['se']:.3f}), "
+      f"F = {fs['F']:.1f} (robust {fs['F_robust']:.1f}), n = {fs['n']:,}, dropped: {fs['dropped']}")
+
+Changes from the starter, and why:
+
+data=df replaces card, because your dataframe is called df.
+I added se, which you need for the table.
+dropped lists the controls with one unique value in the sample. For example, south is all 1 inside the South sample, so it’s perfectly collinear with the constant. They’re removed before fitting and returned so you can report them.
+controls must be a list, so pass CTRL_LIST, not CONTROLS. If the starter’s own GIVEN cell still calls first_stage(CONTROLS) with your string, it will error. Delete or skip that call.
+
+Expected output: +0.320, F ≈ 13.3, n = 3,010, dropped []. Paste what you get. Next is the 2SLS helper.
+
+Prompt: Exercise 2, Anderson–Rubin
+
+Exercise 2: weak-instrument-robust inference (Anderson–Rubin). Same working style.
+
+Purpose: test Card's second link. Can the confidence interval around 0.132 be trusted, given F ≈ 13? The conventional Wald interval is iv_fit.conf_int().loc["educ"] (roughly 0.024 to 0.239).
+
+Already exists from Exercise 1: CTRL_LIST, first_stage(), the subsample definitions, output/ex1_first_stage.csv.
+
+What to build, in the Exercise 2 code cell:
+- anderson_rubin(controls, instrument="nearc4", grid=np.linspace(-0.2, 0.6, 801), data=df, cov_type="HC1"): adapted from the starter (credit it). For each candidate b0, regress lwage − b0·educ on nearc4 + controls and keep b0 if nearc4's p-value > 0.05. Return (low, high, touches_edge).
+- Run it for the full sample with BOTH cov_type="nonrobust" (apples-to-apples with Card's conventional SEs) and "HC1". If the set touches the grid edge, widen the grid once before calling it unbounded.
+- Then run it for the Exercise 1 subsamples (drop constant controls like Ex 1 does).
+- A table of sample, Wald low/high, AR low/high, touches_edge, and whether 0 is inside each. Save it to output/ex2_anderson_rubin.csv.
+- One figure: Wald vs AR intervals side by side per sample, saved as output/ex2_ar_intervals.png.
+
+Plan for Exercise 2:
+
+Cell 1: adapt anderson_rubin and add a small wrapper that widens the grid once if the set touches the edge. Run it on the full sample with nonrobust and HC1 SEs, next to the Wald interval.
+Cell 2: run the same for every subsample, with the Wald interval from 2SLS on the same controls, and save ex2_anderson_rubin.csv.
+Cell 3: plot Wald vs AR intervals per sample and save ex2_ar_intervals.png.
+
+Cell 1: AR function and full sample
+
+python
+# Adapted from the course starter (reference/replication_starter_card1995.ipynb):
+# added data=df default, cov_type option, constant-control dropping and a gap check
+def anderson_rubin(controls, instrument="nearc4", grid=np.linspace(-0.2, 0.6, 801), data=df, cov_type="HC1"):
+    controls = [c for c in controls if data[c].nunique() > 1]
+    X = sm.add_constant(data[[instrument] + controls])
+    keep = [i for i, b0 in enumerate(grid)
+            if sm.OLS(data["lwage"] - b0 * data["educ"], X).fit(cov_type=cov_type).pvalues[instrument] > 0.05]
+    if not keep:
+        return None
+    if keep[-1] - keep[0] + 1 != len(keep):
+        print("Warning: AR set is not one interval (has a gap)")
+    edge = keep[0] == 0 or keep[-1] == len(grid) - 1
+    return grid[keep[0]], grid[keep[-1]], edge
+
+WIDE = np.linspace(-1, 2, 3001)
+
+def ar_with_widen(controls, data=df, cov_type="HC1"):
+    ar = anderson_rubin(controls, data=data, cov_type=cov_type)
+    if ar is not None and ar[2]:
+        ar = anderson_rubin(controls, grid=WIDE, data=data, cov_type=cov_type)
+    return ar
+
+for ct in ["nonrobust", "HC1"]:
+    lo, hi, edge = ar_with_widen(CTRL_LIST, cov_type=ct)
+    print(f"AR ({ct}): [{lo:.3f}, {hi:.3f}], touches edge: {edge}")
+wald = iv_fit.conf_int().loc["educ"]
+print(f"Wald: [{wald.iloc[0]:.3f}, {wald.iloc[1]:.3f}]")
+
+Changes from the starter, and why:
+
+data=df and constant-control dropping work the same way as in Ex 1, so subsamples don’t break.
+cov_type is now an argument. With "nonrobust" the test uses classical SEs, matching Card’s conventional ones. "HC1" is the starter’s default.
+The starter returns min and max of the kept values, which assumes the set is one interval. With a weak instrument the AR set can be two separate pieces with a hole in the middle (e.g. both tails kept). The gap check warns you if that happens, so min and max don’t hide it.
+If the set still touches the edge of the wide grid (−1 to 2), treat it as unbounded on that side.
+
+Expected output: the Wald line should read about [0.024, 0.239]. Expect the AR set to be wider and probably shifted upward, but paste what you get.
+
+One question for Cell 2: should the subsamples get both nonrobust and HC1, or HC1 only? Both doubles the table’s AR columns; HC1 only keeps it simpler.
+
+Prompt: Exercise 3, your own specification
+
+Exercise 3: my own specification choices. Same working style.
+
+Purpose: test Card's third link. Does 0.132 depend on choices the paper made but didn't justify? These come from my Section 2 ambiguities list: (1) Card's family-background controls use parental-education class dummies with mean imputation that aren't reproducible from card.dta; (2) the controls mix 1966 region/urban (reg66x, smsa66) with 1976 South/urban (south, smsa) without justification; (3) the instrument choice (nearc4 vs nearc2).
+
+Already exists: CTRL_LIST, first_stage(), anderson_rubin(), plus Ex 1/2 outputs.
+
+What to build, in the Exercise 3 code cell(s). A small helper iv_spec(controls, instrument, data) returning 2SLS coef, SE, 95% CI, first-stage F and n would keep it short. Specs:
+  a) Baseline (should reproduce 0.1315, n = 3,010).
+  b) + family background: fatheduc, motheduc, momdad14 (sinmom14 optional). These have missing values (fatheduc 690, motheduc 353), so ALSO run the baseline on the same reduced sample. That separates "the controls changed it" from "the sample changed it". Report the rows lost.
+  c) 1966-only geography: drop south and smsa, keep reg661–reg668 and smsa66.
+  d) 1976-only geography: drop reg66x and smsa66, keep south and smsa.
+  e) nearc2 as the instrument instead of nearc4.
+  f) Both nearc2 and nearc4 as instruments, plus an over-identification test (linearmodels has sargan / wooldridge_overid on the fit result).
+- Optional, only if I agree: the MY_SPEC + check_my_spec pattern from the starter for one chosen spec, with a two-sentence justification that I write.
+- Save the table to output/ex3_specs.csv. Columns: spec, instrument, n, iv_coef, iv_se, ci_low, ci_high, fs_F.
+
+Plan for Exercise 3:
+
+Cell 1: an iv_spec helper, then specs (a), (b0) baseline on the family sample, and (b) with family controls, plus the count of rows lost.
+Cell 2: specs (c) to (f) and the over-identification tests.
+Cell 3: save ex3_specs.csv.
+
+Cell 1
+
+python
+def iv_spec(controls, instruments=["nearc4"], data=df):
+    data = data.dropna(subset=controls + instruments)
+    controls = [c for c in controls if data[c].nunique() > 1]
+    exog = sm.add_constant(data[controls])
+    fit = IV2SLS(data["lwage"], exog, data["educ"], data[instruments]).fit(cov_type="unadjusted", debiased=True)
+    fs = sm.OLS(data["educ"], sm.add_constant(data[instruments + controls])).fit()
+    fs_F = fs.f_test(", ".join(f"{z} = 0" for z in instruments)).fvalue  # joint F, equals t² with one instrument
+    ci = fit.conf_int().loc["educ"]
+    row = {"instrument": "+".join(instruments), "n": int(fit.nobs), "iv_coef": fit.params["educ"],
+           "iv_se": fit.std_errors["educ"], "ci_low": ci.iloc[0], "ci_high": ci.iloc[1], "fs_F": float(fs_F)}
+    return row, fit
+
+rows = []
+def add(spec, controls, instruments=["nearc4"], data=df):
+    row, fit = iv_spec(controls, instruments, data)
+    rows.append({"spec": spec, **row})
+    return fit
+
+FAMILY = ["fatheduc", "motheduc", "momdad14"]
+fam_df = df.dropna(subset=FAMILY)
+
+add("a) Baseline", CTRL_LIST)
+add("b0) Baseline, family sample", CTRL_LIST, data=fam_df)
+add("b) + family background", CTRL_LIST + FAMILY, data=fam_df)
+
+print("Rows lost to family background:", len(df) - len(fam_df))
+print(pd.DataFrame(rows).round({"iv_coef": 4, "iv_se": 4, "ci_low": 3, "ci_high": 3, "fs_F": 2}))
+
+How it works:
+
+iv_spec runs one 2SLS with your baseline settings and returns a table row. It also returns the fit, which spec (f) needs for the over-identification test.
+add just appends the row with a label, so each spec is one line.
+fs_F uses a joint F-test on the instruments. With one instrument it equals t², matching Ex 1. With two (spec f) it’s the correct joint test, where t² would be wrong.
+dropna inside iv_spec is a no-op for the baseline, since df is already clean. It only matters if a spec adds variables with missing values.
+The (a) → (b0) → (b) chain splits the change into two parts. (a) vs (b0) is the sample effect, the same model on fewer people. (b0) vs (b) is the controls effect, the same people with family background added.
+sinmom14 is left out. Add it to FAMILY if you want it.
+
+Check: row (a) should show n = 3,010, coefficient 0.1315, SE 0.0550, fs_F ≈ 13.3. Paste the output.
+
+Prompt: Exercise 4, exclusion restriction / placebo
+
+Exercise 4: the exclusion restriction, Card's key assumption. Same working style.
+
+Purpose: test Card's fourth link. Does growing up near a college affect wages ONLY through schooling? If families near colleges differ in ability or background, nearc4 is picking up more than schooling. No test can prove exclusion, but a placebo can show warning signs.
+
+Already exists: CTRL_LIST, iv_spec() / first_stage() / anderson_rubin(), and outputs from Ex 1–3.
+
+What to build, in the Exercise 4 code cell(s):
+- Placebo: regress pre-determined ability measures on nearc4 + CTRL_LIST (NOT educ, which is the channel). The outcomes are IQ (949 missing) and KWW (47 missing). Standardize each to mean 0, SD 1 on its estimation sample so the coefficient reads in SDs. Report coef, SE, p-value, n. Then explain why these are reasonable placebos (measured in or near 1966, before most schooling was done) and the caveat that IQ/KWW might partly reflect schooling already done by 1966.
+- Sensitivity: 2SLS adding IQ and/or KWW as controls, compared with the baseline on the same reduced sample. Does the return shrink once ability is held fixed?
+- Optional: the reduced form (lwage on nearc4 + controls) in a subsample where exclusion is arguably more believable, e.g. men with low-education parents, the compliers Card's Figure 1 points to. Discuss with me first.
+- Save the tables to output/ex4_placebo.csv and output/ex4_ability_controls.csv.
+- Final (optional, if time): one coefficient plot of every 2SLS estimate across Ex 1, 3 and 4 with 95% CIs, the baseline marked, saved as output/spec_plot.png.
+
+Plan for Exercise 4:
+
+Cell 1: placebo regressions of standardized IQ and KWW on nearc4 plus controls, saved to ex4_placebo.csv.
+Cell 2: 2SLS with IQ and/or KWW as controls vs the baseline on the same reduced samples, saved to ex4_ability_controls.csv.
+Then we discuss the optional low-parental-education subsample and the spec plot.
+
+One design issue first. CTRL_LIST contains exper and expersq. In this data, potential experience is age − educ − 6, so it’s a function of schooling. Controlling for it in a placebo partly conditions on educ, the channel you’re trying to exclude (a “bad control”). The clean placebo uses age and agesq instead. Cell 1 runs both versions, so you can see whether this matters.
+
+Cell 1: placebo
+
+python
+PLACEBO_CTRL = {"age controls": ["age", "agesq"] + CTRL_LIST[2:],  # CTRL_LIST[2:] = black ... reg668
+                "exper controls": CTRL_LIST}
+
+placebo = []
+for y in ["IQ", "KWW"]:
+    d = df.dropna(subset=[y]).copy()
+    d["z"] = (d[y] - d[y].mean()) / d[y].std()
+    for label, ctrl in PLACEBO_CTRL.items():
+        fit = sm.OLS(d["z"], sm.add_constant(d[["nearc4"] + ctrl])).fit(cov_type="HC1")
+        placebo.append({"outcome": y, "controls": label, "coef": fit.params["nearc4"],
+                        "se": fit.bse["nearc4"], "p": fit.pvalues["nearc4"], "n": int(fit.nobs)})
+
+placebo = pd.DataFrame(placebo)
+placebo.to_csv(OUT / "ex4_placebo.csv", index=False)
+print(placebo.round({"coef": 3, "se": 3, "p": 4}))
+
+How it works:
+
+Each score is standardized on its own estimation sample, so the coefficient reads as “SDs of IQ or KWW associated with growing up near a college.”
+I use HC1 SEs because this is a plain OLS test, not a replication of Card’s numbers, so robust inference is the safer default.
+CTRL_LIST[2:] keeps everything except exper and expersq. Check this by printing it once if you like.
+
+Why these are reasonable placebos, and the caveat:
+
+KWW (Knowledge of the World of Work) was tested at the 1966 interview. IQ comes from school records collected around 1968. Both are measured before 1976 wages and mostly before college, so nearc4 shouldn’t “cause” them through college attendance.
+The caveat: the men were 14 to 24 in 1966. The older ones had already finished much of their schooling, and a nearby college may also signal better local schools. So a nonzero coefficient is a warning sign, not proof that exclusion fails.
+IQ is missing for 949 men, so its sample is selected. Note n when you interpret it.
+
+Paste the output, and I’ll explain it before we move to Cell 2.
