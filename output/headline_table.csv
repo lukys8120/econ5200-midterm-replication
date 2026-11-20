@@ -1,0 +1,8 @@
+estimate,paper_estimate,my_estimate,gap_pct,likely_source
+"Table 2, col 2: OLS return to schooling",0.075,0.07469324651520358,-0.40900464639522427,Match; gap is rounding of published 3dp
+"Table 3A, col 1: first stage, nearc4 on educ",0.32,0.3198989400914667,-0.03158122141666206,Match; rounding
+"Table 3A, col 3: reduced form, nearc4 on lwage",0.042,0.04206791913012753,0.16171221458934862,Match; rounding
+"Table 3A, col 5: 2SLS return to schooling",0.132,0.13150377777765243,-0.3759259260208904,Match; rounding
+"Table 3B, col 1: first stage, nearc4 on educ",0.382,0.3923819563977715,2.7177896329244784,Probable printing error: identical SE (0.114)
+"Table 3B, col 3: reduced form, nearc4 on lwage",0.047,0.032454990467381206,-30.946828792805942,"Card's column matches FS x 2SLS, not a regression; see log row 3"
+"Table 3B, col 5: 2SLS return to schooling",0.122,0.12238961871207721,0.31935960006328773,Match; rounding
